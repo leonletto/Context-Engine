@@ -8,7 +8,7 @@ Usage:
     Set environment variables:
     - EMBEDDING_PROVIDER=ollama
     - OLLAMA_EMBED_URL=http://host.docker.internal:11434  (default)
-    - OLLAMA_EMBED_MODEL=nomic-embed-text:latest  (or your model)
+    - OLLAMA_EMBED_MODEL=nomic-embed-text:137m-v1.5-fp16 (or your model)
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from urllib import request
 class OllamaEmbedding:
     """Ollama embedding adapter compatible with fastembed interface."""
     
-    def __init__(self, model_name: str = "nomic-embed-text:latest", **kwargs):
+    def __init__(self, model_name: str = "n", **kwargs):
         self.model_name = model_name
         self.base_url = os.environ.get("OLLAMA_EMBED_URL", "http://host.docker.internal:11434")
         self._dim = None

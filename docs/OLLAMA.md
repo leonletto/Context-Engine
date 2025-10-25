@@ -151,12 +151,41 @@ OLLAMA_URL=http://host.docker.internal:11434
 | `REFRAG_RUNTIME` | `llamacpp` | Runtime: `ollama` or `llamacpp` |
 | `OLLAMA_URL` | `http://localhost:11434` | Ollama API endpoint |
 | `OLLAMA_MODEL` | `qwen2.5-coder:1.5b` | Model name (must be pulled first) |
+| `OLLAMA_CHAT_TEMPLATE` | (auto-detect) | Chat template: `qwen` or `phi` (usually auto-detected) |
 | `OLLAMA_TIMEOUT_SEC` | `120` | HTTP timeout for Ollama requests |
 | `DECODER_MAX_TOKENS` | `300` | Max tokens to generate |
 | `DECODER_TEMPERATURE` | `0.1` | Sampling temperature (0.0-1.0) |
 | `DECODER_TOP_K` | `40` | Top-k sampling |
 | `DECODER_TOP_P` | `0.92` | Top-p (nucleus) sampling |
 | `DECODER_REPEAT_PENALTY` | `1.15` | Repetition penalty |
+
+### Chat Template Formatting
+
+Context-Engine automatically formats prompts with the appropriate chat template based on your model:
+
+- **Qwen models** (qwen2.5-coder, qwq, etc.): Uses `<|im_start|>role\ncontent<|im_end|>` format
+- **Phi models** (phi-3, phi-4): Uses `<|role|>content<|end|>` format
+
+The chat template is auto-detected from the model name. If you need to override it:
+```bash
+export OLLAMA_CHAT_TEMPLATE=qwen  # or 'phi'
+```
+
+**Example formatted prompt for Qwen:**
+```
+<|im_start|>system
+You are a helpful coding assistant. Give brief, direct answers.<|im_end|>
+<|im_start|>user
+Explain this function<|im_end|>
+<|im_start|>assistant
+```
+
+**Example formatted prompt for Phi:**
+```
+<|system|>You are a helpful coding assistant. Give brief, direct answers.<|end|>
+<|user|>Explain this function<|end|>
+<|assistant|>
+```
 
 ## Troubleshooting
 
@@ -173,6 +202,13 @@ OLLAMA_URL=http://host.docker.internal:11434
 - Try a smaller model: `qwen2.5-coder:1.5b` is faster than `7b`
 - Reduce `DECODER_MAX_TOKENS` to generate less text
 - Increase `OLLAMA_TIMEOUT_SEC` if requests are timing out
+
+### Generation timeouts or hangs
+If the model times out or produces no output:
+- **Chat templates are now auto-formatted** - Context-Engine automatically adds the proper chat template tokens (`<|im_start|>`, `<|im_end|>`, etc.) based on your model
+- If auto-detection fails, override with: `export OLLAMA_CHAT_TEMPLATE=qwen` or `phi`
+- Verify your model is an instruct/chat variant (e.g., `qwen2.5-coder:1.5b-instruct`)
+- Check generation with: `ollama run qwen2.5-coder:1.5b "Say hello"`
 
 ### "unsupported REFRAG_RUNTIME" error
 - Ensure you set `REFRAG_RUNTIME=ollama` (lowercase)
