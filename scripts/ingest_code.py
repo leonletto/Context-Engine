@@ -53,7 +53,14 @@ if str(ROOT_DIR) not in sys.path:
 
 
 from qdrant_client import QdrantClient, models
-from fastembed import TextEmbedding
+
+# Embedding provider support (fastembed or ollama)
+try:
+    from scripts.embedding_adapter import get_embedding_model
+    _EMBEDDING_ADAPTER_AVAILABLE = True
+except ImportError:
+    from fastembed import TextEmbedding
+    _EMBEDDING_ADAPTER_AVAILABLE = False
 
 
 
@@ -999,9 +1006,16 @@ def delete_points_by_path(client: QdrantClient, collection: str, file_path: str)
         pass
 
 
-def embed_batch(model: TextEmbedding, texts: List[str]) -> List[List[float]]:
-    # fastembed returns a generator of numpy arrays
-    return [vec.tolist() for vec in model.embed(texts)]
+def embed_batch(model: Any, texts: List[str]) -> List[List[float]]:
+    """Embed a batch of texts. Handles both fastembed (numpy) and Ollama (list) outputs."""
+    result = []
+    for vec in model.embed(texts):
+        # Handle both numpy arrays (fastembed) and plain lists (Ollama)
+        if hasattr(vec, 'tolist'):
+            result.append(vec.tolist())
+        else:
+            result.append(vec)  # Already a list
+    return result
 
 
 def upsert_points(
@@ -1855,9 +1869,20 @@ def index_repo(
     dedupe: bool = True,
     skip_unchanged: bool = True,
 ):
-    model = TextEmbedding(model_name=model_name)
+    # Get embedding model (supports fastembed or ollama)
+    embedding_provider = os.environ.get("EMBEDDING_PROVIDER", "fastembed").lower().strip()
+    
+    if _EMBEDDING_ADAPTER_AVAILABLE:
+        model = get_embedding_model(model_name, provider=embedding_provider)
+    else:
+        # Fallback to fastembed if adapter not available
+        model = TextEmbedding(model_name=model_name)
+    
     # Determine embedding dimension
-    dim = len(next(model.embed(["dimension probe"])))
+    if hasattr(model, 'get_dimension'):
+        dim = model.get_dimension()
+    else:
+        dim = len(next(model.embed(["dimension probe"])))
 
     client = QdrantClient(
         url=qdrant_url,

@@ -114,6 +114,7 @@ services:
 
   llamacpp:
     image: ghcr.io/ggerganov/llama.cpp:server
+    platform: linux/amd64
     container_name: llama-decoder
     # Optional sidecar providing a text-generation API on :8080
     # No behavior change unless REFRAG_DECODER=1
@@ -142,6 +143,8 @@ services:
       - QDRANT_URL=${QDRANT_URL}
       - COLLECTION_NAME=${COLLECTION_NAME}
       - EMBEDDING_MODEL=${EMBEDDING_MODEL}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     working_dir: /work
     volumes:
       - ${HOST_INDEX_PATH:-.}:/work:ro
@@ -168,6 +171,8 @@ services:
       - INDEX_UPSERT_BATCH=128
       - INDEX_UPSERT_RETRIES=5
       - WATCH_DEBOUNCE_SECS=1.5
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     working_dir: /work
     volumes:
       - ${HOST_INDEX_PATH:-.}:/work:ro

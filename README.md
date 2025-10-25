@@ -9,6 +9,7 @@ This gets you from zero to “search works” in under five minutes.
 - Docker + Docker Compose
 - make (optional but recommended)
 - Node/npm if you want to use mcp-remote (optional)
+- **Ollama** (optional, for using local models instead of llama.cpp) - see [Ollama setup](#using-ollama-instead-of-llamacpp)
 
 2) One command (recommended)
 ```bash
@@ -16,6 +17,13 @@ This gets you from zero to “search works” in under five minutes.
 INDEX_MICRO_CHUNKS=1 MAX_MICRO_CHUNKS_PER_FILE=200 make reset-dev-dual
 ```
 - Default ports: Memory MCP :8000, Indexer MCP :8001, Qdrant :6333, llama.cpp :8080
+
+**Or with Ollama** (if you prefer):
+```bash
+# Quick start with Ollama (automated script)
+./scripts/start-with-ollama.sh
+```
+See the [Ollama Integration Guide](docs/OLLAMA.md) for detailed setup.
 
 ### Make targets: SSE, RMCP, and dual-compat
 - Legacy SSE only (default):
@@ -62,12 +70,15 @@ HOST_INDEX_PATH="$(pwd)" FASTMCP_INDEXER_PORT=8001 docker compose up -d qdrant m
 
 You can index any local folder by mounting it at /work. Three easy ways:
 
+**💡 Want to index multiple repositories?** See the [Multi-Repository Guide](docs/MULTI-REPO.md) for simple instructions on indexing and searching across multiple codebases.
+
 1) Make target: index a specific path
 ```bash
 make index-path REPO_PATH=/abs/path/to/other/repo [RECREATE=1] [REPO_NAME=name] [COLLECTION=name]
 ```
 - RECREATE=1 drops and recreates the collection before indexing
 - Defaults: REPO_NAME and COLLECTION fall back to the folder name
+- **Tip:** Use the same `COLLECTION` name for multiple repos to search across all of them
 
 2) Make target: index the current working directory
 ```bash
@@ -86,6 +97,7 @@ Notes:
 - MCP clients can connect to the running servers and operate on whichever folder is mounted at /work.
 
 ## Supported IDE clients/extensions
+- **Claude Desktop** (SSE): Use `claude mcp add` - see [Claude Desktop Setup Guide](docs/CLAUDE-DESKTOP.md)
 - Kiro (SSE): uses mcp-remote bridge via command/args; see config below
 - Qodo (RMCP): connects directly to HTTP endpoints; add each tool individually
 - OpenAI Codex (RMCP): TOML config for memory/indexer URLs
@@ -845,10 +857,12 @@ Notes:
 
 ## Decoder-path ReFRAG (feature-flagged)
 
-This stack ships a feature-flagged decoder integration path via a llama.cpp sidecar.
-It is production-safe by default (off) and can run in a fallback “prompt” mode
-that uses a compressed textual context. A future “soft” mode will inject projected
+This stack ships a feature-flagged decoder integration path that supports both llama.cpp and Ollama.
+It is production-safe by default (off) and can run in a fallback "prompt" mode
+that uses a compressed textual context. A future "soft" mode will inject projected
 chunk embeddings into a patched llama.cpp server.
+
+**💡 Using Ollama?** See the [Ollama Integration Guide](docs/OLLAMA.md) for detailed setup instructions.
 
 
 ### Decoder-path dataflow (compress → sense → expand)
@@ -863,9 +877,9 @@ flowchart LR
   S -->|project via φ| P[(Soft embeddings)]
   S -. prompt compress .-> C[Compressed prompt]
 
-  %% Decoder service
+  %% Decoder service options
   subgraph Decoder
-    G[[llama.cpp :8080]]
+    G[[llama.cpp :8080<br/>OR<br/>Ollama :11434]]
   end
 
   %% Mode routing
@@ -890,6 +904,24 @@ REFRAG_DECODER_MODE=prompt  # prompt|soft (soft requires patched llama.cpp)
 REFRAG_ENCODER_MODEL=BAAI/bge-base-en-v1.5
 REFRAG_PHI_PATH=/work/models/refrag_phi_768_to_dmodel.json
 ````
+
+**Alternative: Use Ollama instead of llama.cpp**
+
+If you have Ollama running on your host, you can use it as the decoder:
+
+````ini
+REFRAG_DECODER=1
+REFRAG_RUNTIME=ollama
+OLLAMA_URL=http://host.docker.internal:11434  # or your Ollama URL
+OLLAMA_MODEL=qwen2.5-coder:1.5b               # or any model you've pulled
+````
+
+Notes:
+- Ollama runs on the host at port 11434 by default
+- Use `host.docker.internal` from within Docker containers to reach your host's Ollama
+- On Linux, you may need to use `http://172.17.0.1:11434` or set `OLLAMA_HOST=0.0.0.0` when starting Ollama
+- Pull a model first: `ollama pull qwen2.5-coder:1.5b` (or any other model)
+- Ollama doesn't support soft embeddings, so it always uses "prompt" mode
 
 Bring up llama.cpp sidecar (optional):
 
@@ -919,9 +951,15 @@ make llamacpp-build-image LLAMACPP_MODEL_URL=https://huggingface.co/.../tiny.ggu
 Programmatic use:
 
 ````python
+# llama.cpp
 from scripts.refrag_llamacpp import LlamaCppRefragClient
 c = LlamaCppRefragClient()  # uses LLAMACPP_URL
 text = c.generate_with_soft_embeddings("Question: ...\n", soft_embeddings=None, max_tokens=128)
+
+# Ollama
+from scripts.refrag_ollama import OllamaRefragClient
+c = OllamaRefragClient()  # uses OLLAMA_URL and OLLAMA_MODEL
+text = c.generate_with_soft_embeddings("Question: ...\n", max_tokens=128)
 ````
 
 

@@ -3019,16 +3019,30 @@ async def context_answer(
     top_k = _to_int(os.environ.get("DECODER_TOP_K", "40"), 40)
     top_p = _to_float(os.environ.get("DECODER_TOP_P", "0.92"), 0.92)
 
-    # Call llama.cpp decoder (requires REFRAG_DECODER=1)
+    # Call decoder (requires REFRAG_DECODER=1)
+    # Supports both llama.cpp and Ollama via REFRAG_RUNTIME
     try:
-        from scripts.refrag_llamacpp import LlamaCppRefragClient, is_decoder_enabled  # type: ignore
+        from scripts.refrag_llamacpp import is_decoder_enabled, get_runtime_kind  # type: ignore
         if not is_decoder_enabled():
             return {
-                "error": "decoder disabled: set REFRAG_DECODER=1 and start llamacpp",
+                "error": "decoder disabled: set REFRAG_DECODER=1 and start decoder",
                 "citations": citations,
                 "query": queries,
             }
-        client = LlamaCppRefragClient()
+        
+        runtime = get_runtime_kind()
+        if runtime == "ollama":
+            from scripts.refrag_ollama import OllamaRefragClient  # type: ignore
+            client = OllamaRefragClient()
+        elif runtime == "llamacpp":
+            from scripts.refrag_llamacpp import LlamaCppRefragClient  # type: ignore
+            client = LlamaCppRefragClient()
+        else:
+            return {
+                "error": f"unsupported REFRAG_RUNTIME={runtime}; use 'llamacpp' or 'ollama'",
+                "citations": citations,
+                "query": queries,
+            }
 
         # SIMPLE APPROACH: One LLM call with all context, tight prompt, 300 token limit
         qtxt = "\n".join(queries)

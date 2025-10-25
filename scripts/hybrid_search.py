@@ -458,7 +458,7 @@ def _llm_expand_queries(
 ) -> List[str]:
     """Best-effort LLM expansion with preference for a local runtime (Ollama).
     Providers (by env):
-      - LLM_PROVIDER=ollama (preferred if OLLAMA_HOST set; default http://localhost:11434)
+      - LLM_PROVIDER=ollama (preferred if OLLAMA_HOST set; default http://host.docker.internal:11434)
       - fallback: OPENAI_API_KEY + LLM_EXPAND_MODEL
     On any error or if not configured, returns []."""
     import json
@@ -474,8 +474,8 @@ def _llm_expand_queries(
     # 1) Prefer local Ollama
     prov = (os.environ.get("LLM_PROVIDER") or "").strip().lower()
     ollama_host = (
-        os.environ.get("OLLAMA_HOST", "http://localhost:11434").strip()
-        or "http://localhost:11434"
+        os.environ.get("OLLAMA_HOST", "http://host.docker.internal:11434").strip()
+        or "http://host.docker.internal:11434"
     )
     if prov in {"", "ollama"}:  # default to ollama if reachable
         try:
