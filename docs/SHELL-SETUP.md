@@ -18,7 +18,10 @@ Add these lines to your shell config file:
 export CONTEXT_ENGINE_PATH="/Users/Shared/OpenSource/Context-Engine"
 export CONTEXT_COLLECTION="all-repos"
 export EMBEDDING_PROVIDER=ollama
-export OLLAMA_EMBED_MODEL=nomic-embed-text:latest
+export OLLAMA_EMBED_MODEL=nomic-embed-text:137m-v1.5-fp16
+export OLLAMA_EMBED_TIMEOUT=120  # Per-request timeout (default: 120s)
+export OLLAMA_EMBED_RETRIES=3    # Number of retry attempts (default: 3)
+export OLLAMA_EMBED_WORKERS=4    # Concurrent requests (default: 4, gives ~2.6x speedup)
 
 # Remove old aliases
 unalias index-here 2>/dev/null
@@ -32,6 +35,9 @@ index-here() {
   MAX_MICRO_CHUNKS_PER_FILE=500 \
   EMBEDDING_PROVIDER="$EMBEDDING_PROVIDER" \
   OLLAMA_EMBED_MODEL="$OLLAMA_EMBED_MODEL" \
+  OLLAMA_EMBED_TIMEOUT="$OLLAMA_EMBED_TIMEOUT" \
+  OLLAMA_EMBED_RETRIES="$OLLAMA_EMBED_RETRIES" \
+  OLLAMA_EMBED_WORKERS="$OLLAMA_EMBED_WORKERS" \
   HOST_INDEX_PATH="$current_dir" \
   COLLECTION_NAME="$CONTEXT_COLLECTION" \
   REPO_NAME="$repo_name" \
@@ -49,6 +55,9 @@ index-here-as() {
   MAX_MICRO_CHUNKS_PER_FILE=500 \
   EMBEDDING_PROVIDER="$EMBEDDING_PROVIDER" \
   OLLAMA_EMBED_MODEL="$OLLAMA_EMBED_MODEL" \
+  OLLAMA_EMBED_TIMEOUT="$OLLAMA_EMBED_TIMEOUT" \
+  OLLAMA_EMBED_RETRIES="$OLLAMA_EMBED_RETRIES" \
+  OLLAMA_EMBED_WORKERS="$OLLAMA_EMBED_WORKERS" \
   HOST_INDEX_PATH="$current_dir" \
   COLLECTION_NAME="$CONTEXT_COLLECTION" \
   REPO_NAME="$1" \
@@ -63,10 +72,13 @@ index-here-fresh() {
   MAX_MICRO_CHUNKS_PER_FILE=500 \
   EMBEDDING_PROVIDER="$EMBEDDING_PROVIDER" \
   OLLAMA_EMBED_MODEL="$OLLAMA_EMBED_MODEL" \
+  OLLAMA_EMBED_TIMEOUT="$OLLAMA_EMBED_TIMEOUT" \
+  OLLAMA_EMBED_RETRIES="$OLLAMA_EMBED_RETRIES" \
+  OLLAMA_EMBED_WORKERS="$OLLAMA_EMBED_WORKERS" \
   HOST_INDEX_PATH="$current_dir" \
   COLLECTION_NAME="$CONTEXT_COLLECTION" \
   REPO_NAME="$repo_name" \
-    docker compose -f "$CONTEXT_ENGINE_PATH/docker-compose.yml" run --rm indexer --root /work --recreate
+    docker compose -f "$CONTEXT_ENGINE_PATH/docker-compose.yml" run --rm indexer --root /work --recreate --no-skip-unchanged
 }
 ```
 
@@ -83,28 +95,40 @@ source ~/.bashrc   # for Bash
 
 Now you can use these simple commands from anywhere:
 
-### 1. Index Current Directory
+### 1. Index Current Directory (Incremental)
 ```bash
 cd ~/my-project
 index-here
 ```
+**What it does:** Only indexes new/changed files (smart caching)
 
 ### 2. Index with Custom Name
 ```bash
 cd ~/my-project
 index-here-as myapp-backend
 ```
+**What it does:** Same as `index-here` but with a custom repository name
 
-### 3. Index from Anywhere
-```bash
-index-path ~/other-project
-index-path ~/another-project custom-name
-```
-
-### 4. Fresh Index (Recreate)
+### 3. Fresh Index (Complete Rebuild)
 ```bash
 cd ~/my-project
 index-here-fresh
+```
+**What it does:** 
+- Drops and recreates the collection
+- Forces re-indexing of ALL files (ignores cache)
+- Use this when you want to completely rebuild the index
+
+**When to use `index-here-fresh`:**
+- After major refactoring
+- If search results seem stale
+- When switching embedding models
+- To clean up the index from scratch
+
+### 4. Index from Anywhere
+```bash
+index-path ~/other-project
+index-path ~/another-project custom-name
 ```
 
 ---
@@ -350,6 +374,77 @@ source ~/.zshrc  # or ~/.bashrc
 ```
 
 Or open a new terminal window.
+
+### Ollama embedding timeouts
+
+If you get `TimeoutError: timed out` or `URLError` during indexing:
+
+1. **Adjust concurrent workers** (default is 4 parallel requests, giving ~2.6x speedup):
+   ```bash
+   # If Ollama is overloaded or timing out, reduce workers:
+   export OLLAMA_EMBED_WORKERS=2   # More conservative (still 2.5x faster)
+   
+   # If you want maximum speed and your system can handle it:
+   export OLLAMA_EMBED_WORKERS=8   # Fastest (2.8x speedup)
+   
+   source ~/.zshrc
+   ```
+   
+   **💡 Pro tip:** Run `python3 $CONTEXT_ENGINE_PATH/scripts/benchmark_ollama_embeddings.py` to find your system's optimal worker count!
+
+2. **Increase the timeout** if individual requests are slow (default is 120 seconds):
+   ```bash
+   export OLLAMA_EMBED_TIMEOUT=300  # 5 minutes per request
+   source ~/.zshrc
+   ```
+
+3. **Check Ollama is running and responsive**:
+   ```bash
+   curl http://localhost:11434/api/tags
+   ollama list
+   ```
+
+4. **Verify model is pulled**:
+   ```bash
+   ollama pull nomic-embed-text:latest
+   ```
+
+5. **Test from Docker** (to verify networking):
+   ```bash
+   cd $CONTEXT_ENGINE_PATH
+   docker run --rm --add-host=host.docker.internal:host-gateway \
+     curlimages/curl:latest curl -v http://host.docker.internal:11434/api/tags
+   ```
+
+6. **Increase retries** if your connection is flaky:
+   ```bash
+   export OLLAMA_EMBED_RETRIES=5  # default is 3
+   ```
+
+7. **For large repositories**, consider:
+   - Reducing `MAX_MICRO_CHUNKS_PER_FILE` (e.g., from 500 to 200)
+   - Reducing `OLLAMA_EMBED_WORKERS` (e.g., from 4 to 2)
+   - Using FastEmbed instead: `export EMBEDDING_PROVIDER=fastembed`
+   - Processing in smaller batches by indexing subdirectories separately
+
+### Performance tuning
+
+**Finding your optimal worker count:**
+
+Run the benchmark tool to test your system:
+```bash
+cd $CONTEXT_ENGINE_PATH
+python3 scripts/benchmark_ollama_embeddings.py
+```
+
+This will test 1, 2, 4, 8, and 16 workers and recommend the optimal setting for your hardware.
+
+**Typical results:**
+- **1 worker** (sequential): ~56 emb/sec (baseline)
+- **2 workers**: ~139 emb/sec (2.5x faster) - Conservative
+- **4 workers**: ~147 emb/sec (2.6x faster) - **Recommended default** ⭐
+- **8 workers**: ~159 emb/sec (2.8x faster) - Maximum performance
+- **16 workers**: ~148 emb/sec (2.6x) - Diminishing returns, overhead increases
 
 ### "make: command not found"
 

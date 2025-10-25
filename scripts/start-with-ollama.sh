@@ -62,7 +62,7 @@ echo
 
 # Enable micro-chunking (recommended)
 export INDEX_MICRO_CHUNKS=1
-export MAX_MICRO_CHUNKS_PER_FILE=200
+export MAX_MICRO_CHUNKS_PER_FILE=500
 
 echo "🚀 Starting Context-Engine with Ollama..."
 echo
